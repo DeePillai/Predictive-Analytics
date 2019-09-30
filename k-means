@@ -1,0 +1,101 @@
+library(psych)
+library(MASS)
+library(Metrics)
+absenteeism <- read.csv("/Users/deept/Desktop/PA_CIA_1/Absenteeism_at_work.csv")
+View(absenteeism)
+attach(absenteeism)
+
+set.seed(1234)
+absenteeism_mix=absenteeism[order(runif(740)),]
+absenteeism_mix_train=absenteeism_mix[0:390,]
+absenteeism_mix_test=absenteeism_mix[391:740,]
+
+model=lm(Absenteeism.time.in.hours~.,data = absenteeism_mix_train)
+stepAIC(model,scale=0,direction = "backward",trace=1,keep = NULL,steps = 20)
+
+reduced_model=lm(formula = Absenteeism.time.in.hours ~ ID + Reason.for.absence + Month.of.absence + 
+                   Day.of.the.week + Seasons + Transportation.expense + Distance.from.Residence.to.Work + 
+                   Service.time + Age + Work.load.Average.day + Hit.target + 
+                   Disciplinary.failure + Education + Son + Social.drinker + 
+                   Social.smoker + Pet + Weight + Height + Body.mass.index, data = absenteeism_mix_train)
+
+reduced_model
+summary(reduced_model)
+
+pred_absenteeism=predict(reduced_model,newdata = absenteeism_mix_test)
+mse(absenteeism_mix_test$Absenteeism.time.in.hours,pred_absenteeism)
+mae(absenteeism_mix_test$Absenteeism.time.in.hours,pred_absenteeism)
+error=absenteeism_mix_test$Absenteeism.time.in.hours-pred_absenteeism
+plot(error)
+
+# Model using PCA for feature extraction
+
+library(factoextra)
+library(FactoMineR)
+
+pca_absenteeism=pca(absenteeism_mix[-21],nfactors = 5,rotate = "none")
+pca_absenteeism
+pca_absenteeism$loadings
+plot(pca_absenteeism$values, type = "b",ylab = "Eigenvalues",xlab = "component",lab=c(5,5,5))
+data=data.frame(absenteeism_mix$Absenteeism.time.in.hours,pca_absenteeism$scores)
+label_absentee=absenteeism_mix$Absenteeism.time.in.hours
+
+write.csv(pca_absenteeism$loadings,"/Users/deept/Desktop/PA_CIA_1/pca_absenteeism.csv")
+pca_regression_absenteeism=lm(Absenteeism.time.in.hours~ Month.of.absence+Transportation.expense+Distance.from.Residence.to.Work+Service.time+Age+Disciplinary.failure+Social.drinker+Weight+Body.mass.index, data = absenteeism_mix_train)
+summary(pca_regression_absenteeism)
+predict_absenteeism_pca=predict(pca_regression_absenteeism,newdata = absenteeism_mix_test)
+error1=absenteeism_mix_test$Absenteeism.time.in.hours-predict_absenteeism_pca
+error1
+mse(absenteeism_mix_test$Reason.for.absence,predict_absenteeism_pca)
+
+# according to the loading only 9 variables are found to be significant . Hence regression model is built only with those 9 variables 
+# Model for clustering
+
+library(cluster)
+library(NbClust)
+library(fpc)
+library(rattle)
+#library(Amelia)
+library(DataExplorer)
+library(flexclust)
+
+absenteeism <- read.csv("/Users/deept/Desktop/PA_CIA_1/Absenteeism_at_work.csv")
+View(absenteeism)
+summary(absenteeism)
+sum(is.na(absenteeism))
+numeric_absent=absenteeism[c(1,6:11,18:20)]
+categorical_absent=absenteeism[c(2:5,12:17,21)]
+
+absenteeism2=scale(numeric_absent)
+set.seed(123)
+devAskNewPage(ask=TRUE)
+absent_data=NbClust(absenteeism2,min.nc = 2,max.nc = 10,method = "kmeans")
+
+
+table(absent_data$Best.n[1,])
+barplot(table(absent_data$Best.n[1,]),xlab="no of Clusters",ylab="No of Criteria",main="number of Clusters")
+
+set.seed(123)
+fit.absent=kmeans(absenteeism2,3,nstart=25)
+fit.absent$size
+fit.absent$centers
+
+aggregate_absent=aggregate(numeric_absent,by=list(cluster=fit.absent$cluster),mean)
+aggregate_absent
+
+clusplot(numeric_absent,fit.absent$cluster,color=TRUE,shade=TRUE,labels = 3,lines=0)
+plotcluster(numeric_absent,fit.absent$cluster)
+absent_cluster=cbind(absenteeism,fit.absent$cluster)
+
+write.csv(aggregate_absent,"/Users/deept/Desktop/PA_CIA_1/aggregateabsent.csv")
+
+#----- Silhoutte distance calculation -----
+
+library(vegan)
+dis=dist(absenteeism2)^2
+res=kmeans(absenteeism2,3)
+sil=silhouette(res$cluster,dis)
+#windows()
+plot(sil)
+
+
