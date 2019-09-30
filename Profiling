@@ -1,0 +1,166 @@
+DATASET- ABSENTEEISM AT WORK"
+
+---
+LIBRARIES INSTALLED:
+
+```{r}
+#LIBRARIES
+library(psych)
+library(MASS)
+library(Metrics)
+library(factoextra)
+library(FactoMineR)
+library(cluster)
+library(NbClust)
+library(fpc)
+library(rattle)
+#library(Amelia)
+library(DataExplorer)
+library(flexclust)
+library(vegan)
+
+```
+
+PRINCIPAL COMPONENT ANALYSIS:
+
+The Absenteeism dataset is selected for Principal component analysis, modeling using k means clustering and profiling the employees.Initially the dataset is read into R studio using function read.csv 
+
+```{r setup, include=FALSE}
+absenteeism <- read.csv("/Users/deept/Desktop/PA_CIA_1/Absenteeism_at_work.csv")
+#View(absenteeism)
+attach(absenteeism)
+```
+
+The dataset's summary gives us information about the minimum , maximum and mean value of each variable and there is no missing values in this dataset. 
+For the data in order to achieve perfect randomization and uniform distribution of random numbers order and runif function is used. Further the 
+data is divided into training and test data for building the model.
+
+```{r}
+summary(absenteeism)
+sum(is.na(absenteeism))
+set.seed(1234)
+absenteeism_mix=absenteeism[order(runif(740)),]
+absenteeism_mix_train=absenteeism_mix[0:390,]
+absenteeism_mix_test=absenteeism_mix[391:740,]
+```
+
+A linear regression model is built using step wise function. In Stepwise selection is a combination of forward and backward selections. You start with no predictors, then add the most contributing predictors (like forward selection). After adding each new variable, remove any variables that no longer provide an improvement in the model fit (like backward selection).In first step all the variables are considered for model and at the end the model is again built using the remaining predictors which are significant.
+
+```{r}
+model=lm(Absenteeism.time.in.hours~.,data = absenteeism_mix_train)
+stepAIC(model,scale=0,direction = "backward",trace=1,keep = NULL,steps = 20)
+reduced_model=lm(formula = Absenteeism.time.in.hours ~ ID + Reason.for.absence+ Month.of.absence + Day.of.the.week + Disciplinary.failure + Education + Son + Weight + Body.mass.index, data = absenteeism_mix_train)
+ 
+reduced_model
+summary(reduced_model)
+```
+
+Once the reduced model is built the same is used to calculate the MSE, MSA and error values. The plot of error values shows that there is few outliers
+
+```{r}
+pred_absenteeism=predict(reduced_model,newdata = absenteeism_mix_test)
+mse(absenteeism_mix_test$Absenteeism.time.in.hours,pred_absenteeism)
+mae(absenteeism_mix_test$Absenteeism.time.in.hours,pred_absenteeism)
+error=absenteeism_mix_test$Absenteeism.time.in.hours-pred_absenteeism
+plot(error)
+```
+
+Further the principal components analysis is done using with minimum of 5 principal components. The same is written in csv file using the function (writ.csv). From the loadings values csv the significant variables is known. Considering the cutoff value as 0.6 any variable with the loadings value greater that +0.6 / -0.6 is taken as significant variables. 
+
+INTERPRETATION-
+
+From 21 variables only 9 variables are significant [ Month.of.absence, Transportation.expense, Distance.from.Residence.to.Work, Service.time, Age, Disciplinary.failure, Social.drinker, Weight, Body.mass.index]
+
+```{r}
+pca_absenteeism=pca(absenteeism_mix[-21],nfactors = 5,rotate = "none")
+pca_absenteeism
+pca_absenteeism$loadings
+plot(pca_absenteeism$values, type = "b",ylab = "Eigenvalues",xlab = "component",lab=c(5,5,5))
+data=data.frame(absenteeism_mix$Absenteeism.time.in.hours,pca_absenteeism$scores)
+label_absentee=absenteeism_mix$Absenteeism.time.in.hours
+
+write.csv(pca_absenteeism$loadings,"/Users/deept/Desktop/PA_CIA_1/pca_absenteeism.csv")
+```
+
+According to the loading only 9 variables are found to be significant. Hence regression model is built only with those 9 variables and the MSE value is calculated.
+
+```{r}
+pca_regression_absenteeism=lm(Absenteeism.time.in.hours~ Month.of.absence+Transportation.expense+Distance.from.Residence.to.Work+Service.time+Age+Disciplinary.failure+Social.drinker+Weight+Body.mass.index, data = absenteeism_mix_train)
+summary(pca_regression_absenteeism)
+predict_absenteeism_pca=predict(pca_regression_absenteeism,newdata = absenteeism_mix_test)
+error1=absenteeism_mix_test$Absenteeism.time.in.hours-predict_absenteeism_pca
+error1
+mse(absenteeism_mix_test$Reason.for.absence,predict_absenteeism_pca)
+```
+
+MODEL FOR CLUSTERING:
+
+Once the pricipal components analysis is done, model for clustering is built which is inturn used for profiling the employees.
+Initially two separate dataframes is created to store the numeric and categorical variables separately
+
+```{r}
+numeric_absent=absenteeism[c(1,6:11,18:20)]
+categorical_absent=absenteeism[c(2:5,12:17,21)]
+```
+
+The clustering model is built using k means method. A graph plotted with respect to Hubert index and no of clusters & with respect to D index  is obtained and no of clusters is obtained. The Hubert index and D index is a graphical method of determining the number of clusters 
+
+INTERPRETATION -
+
+In the plot of Hubert index, we seek a significant knee that corresponds to a significant increase of the value of the measure i.e the significant peak in Hubert index second differences plot. Also each time particluar number of clusters is proposed. Finally according to majority rule, the best number of clusters is  3 (also depicte with bar plot and table values).   
+
+
+```{r}
+absenteeism2=scale(numeric_absent)
+set.seed(123)
+devAskNewPage(ask=TRUE)
+absent_data=NbClust(absenteeism2,min.nc = 2,max.nc = 10,method = "kmeans")
+table(absent_data$Best.n[1,])
+barplot(table(absent_data$Best.n[1,]),xlab="no of Clusters",ylab="No of Criteria",main="number of Clusters")
+```
+
+The centroid values of each varibles is calculated and mean value of the same is also calculated and clustered into 3 values. These values is written in csv file and used for employee profiling.
+
+```{r}
+
+set.seed(123)
+fit.absent=kmeans(absenteeism2,3,nstart=25)
+fit.absent$size
+fit.absent$centers
+aggregate_absent=aggregate(numeric_absent,by=list(cluster=fit.absent$cluster),mean)
+aggregate_absent
+
+clusplot(numeric_absent,fit.absent$cluster,color=TRUE,shade=TRUE,labels = 3,lines=0)
+plotcluster(numeric_absent,fit.absent$cluster)
+absent_cluster=cbind(absenteeism,fit.absent$cluster)
+
+write.csv(aggregate_absent,"/Users/deept/Desktop/PA_CIA_1/aggregateabsent.csv")
+
+```
+
+INTERPRETATION -
+
+The three clusters formed are of sizes : 382, 125, 233
+From the values of mean centres, based on the distance travelled and service experience variables the employees are profiles as,  
+
+cluster 1 : mid distant travellers with less experience (as the distance travelled is mid level and service experience time being the least)
+
+cluster 2: less distant travellers with mid level experience (as the distance travelled is less and service experience time being the mid level)
+
+cluster 3: long distant travellers with more experience (as the distance travelled is longest and service experience time being the highest)
+           
+Also the three clusters are plotted in different colours 
+
+```{r}
+dis=dist(absenteeism2)^2
+res=kmeans(absenteeism2,3)
+sil=silhouette(res$cluster,dis)
+#windows()
+plot(sil)
+```
+
+After profiling the clusters obtaines the silhouette distance is calculated which is a measure to know how close each point in a cluster is to the points in its neighboring clusters. The silhouette score rages between 0 and 1, if the score is nearer to 1 then better is the quality of clusters obtained. 
+
+INTERPRETATION-
+
+Since the average silhouette width is 0.42, the quality of clusters obtained is not that great.
